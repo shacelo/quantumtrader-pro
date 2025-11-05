@@ -1,0 +1,10 @@
+2025-11-03 13:21:21,335 - __main__ - INFO - Base de datos inicializada
+2025-11-03 13:21:21,374 - app.core.database - ERROR - Error creando tablas: No module named 'app.models'
+2025-11-03 13:21:21,375 - __main__ - ERROR - Error iniciando la aplicacion: No module named 'app.models'
+2025-11-05 00:48:26,142 - app - INFO - Logging configurado en: c:\Users\marce\Desarrollo\Binance\quantumtrader-pro\logs\quantumtrader.log
+2025-11-05 00:54:07,101 - app - INFO - Logging configurado en: c:\Users\marce\Desarrollo\Binance\quantumtrader-pro\logs\quantumtrader.log
+2025-11-05 00:54:54,926 - app - INFO - Logging configurado en: c:\Users\marce\Desarrollo\Binance\quantumtrader-pro\logs\quantumtrader.log
+2025-11-05 00:55:51,163 - app - INFO - Logging configurado en: c:\Users\marce\Desarrollo\Binance\quantumtrader-pro\logs\quantumtrader.log
+2025-11-05 01:05:47,569 - app - INFO - Logging configurado en: c:\Users\marce\Desarrollo\Binance\quantumtrader-pro\logs\quantumtrader.log
+2025-11-05 01:09:34,994 - app - INFO - Logging configurado en: c:\Users\marce\Desarrollo\Binance\quantumtrader-pro\logs\quantumtrader.log
+2025-11-05 11:06:18,540 - app - INFO - Logging configurado en: c:\Users\marce\Desarrollo\Binance\quantumtrader-pro\logs\quantumtrader.log

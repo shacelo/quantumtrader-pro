@@ -1,0 +1,95 @@
+# config.yaml - QuantumTrader Pro
+app:
+  name: "QuantumTrader Pro"
+  version: "2.0.0"
+  environment: "development"  # development, production
+  debug: true
+  secret_key: "your-secret-key-here"
+  host: "0.0.0.0"
+  port: 8000
+
+database:
+  host: "localhost"
+  port: 5432
+  name: "postgres"
+  user: "postgres"
+  password: "cacarulo"
+  pool_size: 20
+  max_overflow: 30
+  echo: false
+
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/quantumtrader.log"
+  max_size: "100MB"
+  backup_count: 10
+
+websocket:
+  enabled: true
+  ping_interval: 25
+  ping_timeout: 10
+  max_connections: 1000
+
+trading:
+  default_exchange: "binance"
+  testnet: true
+  real_trading: false
+  max_simultaneous_positions: 3
+  base_currency: "USDT"
+  available_pairs:
+    - "ETHUSDT"
+    - "BNBUSDT" 
+    - "SOLUSDT"
+    - "ADAUSDT"
+    - "DOTUSDT"
+    - "LTCUSDT"
+    - "XRPUSDT"
+
+risk_management:
+  global:
+    max_daily_loss_percent: 5.0
+    max_drawdown_percent: 10.0
+    max_daily_trades: 20
+  per_trade:
+    max_position_percent: 3.0
+    stop_loss_percent: 1.5
+    take_profit_percent: 3.0
+    min_signal_strength: 4
+
+strategies:
+  default: "quantum_v1"
+  available:
+    quantum_v1:
+      name: "Quantum Strategy V1"
+      description: "Estrategia principal con análisis multi-temporal"
+      indicators:
+        sma_fast: 12
+        sma_slow: 26
+        rsi_period: 14
+        volume_threshold: 1.5
+      timeframes:
+        - "1h"
+        - "4h"
+        - "1d"
+
+notifications:
+  enabled: true
+  telegram:
+    enabled: false
+    bot_token: ""
+    chat_id: ""
+  email:
+    enabled: false
+    smtp_server: ""
+    port: 587
+    username: ""
+    password: ""
+    from_email: ""
+    to_emails: []

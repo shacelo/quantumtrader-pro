@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}QuantumTrader Pro{% endblock %}</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Socket.IO -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='images/favicon.ico') }}">
+    
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="bg-gray-900 text-white font-sans">
+    <!-- Loading Spinner -->
+    <div id="loadingSpinner" class="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-50">
+        <div class="text-center">
+            <div class="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mx-auto"></div>
+            <p class="mt-4 text-lg">Cargando QuantumTrader Pro...</p>
+        </div>
+    </div>
+
+    <!-- Navigation -->
+    {% if session.get('user_id') %}
+    <nav class="bg-gray-800 border-b border-gray-700">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <!-- Logo -->
+                <div class="flex items-center">
+                    <div class="flex-shrink-0 flex items-center">
+                        <span class="text-2xl font-bold bg-gradient-to-r from-blue-400 to-green-400 bg-clip-text text-transparent">
+                            🤖 QuantumTrader Pro
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Navigation Links -->
+                <div class="flex items-center space-x-4">
+                    <a href="{{ url_for('dashboard') }}" 
+                       class="px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-700 transition-colors {% if request.endpoint == 'dashboard' %}bg-gray-700{% endif %}">
+                        📊 Dashboard
+                    </a>
+                    <a href="{{ url_for('index') }}" 
+                       class="px-3 py-2 rounded-md text-sm font-medium hover:bg-gray-700 transition-colors {% if request.endpoint == 'index' %}bg-gray-700{% endif %}">
+                        🏠 Inicio
+                    </a>
+                </div>
+
+                <!-- User Menu -->
+                <div class="flex items-center space-x-4">
+                    <span class="text-sm text-gray-300">👤 {{ session.get('username', 'Usuario') }}</span>
+                    <button onclick="logout()" 
+                            class="px-3 py-2 rounded-md text-sm font-medium bg-red-600 hover:bg-red-700 transition-colors">
+                        🚪 Salir
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+    {% endif %}
+
+    <!-- Main Content -->
+    <main class="{% if session.get('user_id') %}pt-4{% endif %}">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Notifications Container -->
+    <div id="notifications" class="fixed top-4 right-4 space-y-2 z-40"></div>
+
+    <!-- JavaScript -->
+    {% if session.get('user_id') %}
+    <script>
+        // Global configuration - DEFINIR ANTES DE websocket.js
+        const CONFIG = {
+            API_BASE: '/api/v1',
+            USER_ID: {{ session.get('user_id', 0) | tojson }},
+            SOCKET_ENABLED: true
+        };
+
+        // Utility functions - CENTRALIZADAS AQUÍ
+        function showNotification(message, type = 'info') {
+            const notifications = document.getElementById('notifications');
+            if (!notifications) return;
+            
+            const notification = document.createElement('div');
+            notification.className = `p-4 rounded-lg shadow-lg border-l-4 notification-enter ${
+                type === 'success' ? 'bg-green-900 border-green-400 text-green-200' :
+                type === 'error' ? 'bg-red-900 border-red-400 text-red-200' :
+                type === 'warning' ? 'bg-yellow-900 border-yellow-400 text-yellow-200' :
+                'bg-blue-900 border-blue-400 text-blue-200'
+            }`;
+            notification.innerHTML = `
+                <div class="flex justify-between items-center">
+                    <span>${message}</span>
+                    <button onclick="this.parentElement.parentElement.remove()" class="ml-4 text-lg">×</button>
+                </div>
+            `;
+            notifications.appendChild(notification);
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.classList.add('notification-exit');
+                    setTimeout(() => notification.remove(), 300);
+                }
+            }, 5000);
+        }
+
+        function formatCurrency(amount) {
+            if (amount >= 0) {
+                return `+$${amount.toFixed(2)}`;
+            } else {
+                return `-$${Math.abs(amount).toFixed(2)}`;
+            }
+        }
+
+        function formatPercent(value) {
+            if (value >= 0) {
+                return `+${value.toFixed(2)}%`;
+            } else {
+                return `${value.toFixed(2)}%`;
+            }
+        }
+
+        async function apiCall(endpoint, options = {}) {
+            try {
+                const response = await fetch(endpoint, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...options.headers
+                    },
+                    ...options
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                return await response.json();
+            } catch (error) {
+                console.error('API call failed:', error);
+                showNotification('❌ Error de conexión con el servidor', 'error');
+                throw error;
+            }
+        }
+
+        function updateConnectionStatus(status) {
+            const statusElement = document.getElementById('connectionStatus');
+            if (statusElement) {
+                const statusConfig = {
+                    'connected': { text: 'Conectado', class: 'text-green-400' },
+                    'disconnected': { text: 'Desconectado', class: 'text-red-400' },
+                    'error': { text: 'Error', class: 'text-red-400' },
+                    'connecting': { text: 'Conectando...', class: 'text-yellow-400' }
+                };
+                
+                const config = statusConfig[status] || statusConfig.disconnected;
+                statusElement.innerHTML = `<span class="${config.class} font-medium">${config.text}</span>`;
+            }
+        }
+
+        function updateBotStatus(isRunning, status, tradingMode = 'simulation') {
+            const botStatusElement = document.getElementById('botStatus');
+            const startBtn = document.getElementById('startBotBtn');
+            const stopBtn = document.getElementById('stopBotBtn');
+            
+            if (botStatusElement) {
+                const modeText = tradingMode === 'real' ? 'REAL' : 'SIMULACIÓN';
+                const statusText = isRunning ? `Ejecutando (${modeText})` : 'Detenido';
+                const statusClass = isRunning ? 'text-green-400' : 'text-red-400';
+                
+                botStatusElement.innerHTML = `<span class="${statusClass} font-medium">${statusText}</span>`;
+            }
+        }
+
+        function addLog(source, message, level = 'info') {
+            const logsContainer = document.getElementById('logsContainer');
+            if (logsContainer) {
+                const logEntry = document.createElement('div');
+                logEntry.className = `mb-1 ${level === 'error' ? 'text-red-400' : level === 'warning' ? 'text-yellow-400' : level === 'success' ? 'text-green-400' : 'text-gray-300'}`;
+                logEntry.innerHTML = `
+                    <span class="text-gray-500">[${new Date().toLocaleTimeString()}]</span>
+                    <span class="font-medium">[${source}]</span>
+                    <span>${message}</span>
+                `;
+                
+                logsContainer.appendChild(logEntry);
+                logsContainer.scrollTop = logsContainer.scrollHeight;
+            }
+        }
+
+        function logout() {
+            if (confirm('¿Estás seguro de que quieres cerrar sesión?')) {
+                apiCall('/api/v1/auth/logout', { method: 'POST' })
+                    .then(() => window.location.href = '/login')
+                    .catch(() => window.location.href = '/login');
+            }
+        }
+
+        // Hide loading spinner when page is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(() => {
+                const spinner = document.getElementById('loadingSpinner');
+                if (spinner) spinner.style.display = 'none';
+            }, 500);
+        });
+    </script>
+
+    <!-- Cargar websocket.js DESPUÉS de definir CONFIG -->
+    <script src="{{ url_for('static', filename='js/websocket.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+    {% endif %}
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,533 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - QuantumTrader Pro{% endblock %}
+
+{% block extra_head %}
+<style>
+    .metric-card {
+        background: linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(30, 41, 59, 0.6));
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        transition: all 0.3s ease;
+    }
+    
+    .metric-card:hover {
+        transform: translateY(-2px);
+        border-color: rgba(96, 165, 250, 0.4);
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+    }
+    
+    .positive {
+        color: #10b981;
+    }
+    
+    .negative {
+        color: #ef4444;
+    }
+    
+    .status-running {
+        background: linear-gradient(135deg, #10b981, #059669);
+    }
+    
+    .status-stopped {
+        background: linear-gradient(135deg, #ef4444, #dc2626);
+    }
+    
+    .status-connecting {
+        background: linear-gradient(135deg, #f59e0b, #d97706);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <!-- Header Section -->
+    <div class="mb-8">
+        <div class="flex justify-between items-center">
+            <div>
+                <h1 class="text-3xl font-bold text-white">📊 Dashboard</h1>
+                <p class="text-gray-400 mt-1">Monitor en tiempo real del sistema de trading</p>
+            </div>
+            <div class="flex items-center space-x-4" id="connectionStatus">
+                <span class="text-green-400 font-medium">🔗 Conectado</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bot Control Section -->
+    <div class="bg-gray-800 rounded-2xl p-6 mb-8 border border-gray-700">
+        <div class="flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center space-x-4">
+                <h2 class="text-xl font-semibold text-white">🤖 Control del Bot</h2>
+                <div id="botStatusBadge" class="px-3 py-1 rounded-full text-sm font-medium status-stopped">
+                    ⏸️ DETENIDO
+                </div>
+                <div id="tradingModeBadge" class="px-3 py-1 rounded-full text-sm font-medium bg-yellow-600">
+                    🔶 SIMULACIÓN
+                </div>
+            </div>
+            
+            <div class="flex flex-wrap gap-3">
+                <button id="startDemoBtn" onclick="startBot('demo')" 
+                        class="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg font-medium transition-colors">
+                    🎮 Iniciar Demo
+                </button>
+                <button id="startSimulationBtn" onclick="startBot('simulation')" 
+                        class="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 rounded-lg font-medium transition-colors">
+                    🔶 Iniciar Simulación
+                </button>
+                <button id="startRealBtn" onclick="showRealTradingWarning()" 
+                        class="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg font-medium transition-colors">
+                    🚨 Iniciar REAL
+                </button>
+                <button id="stopBotBtn" onclick="stopBot()" disabled
+                        class="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg font-medium transition-colors">
+                    ⏹️ Detener Bot
+                </button>
+                <button onclick="loadDashboardData()" 
+                        class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg font-medium transition-colors">
+                    🔄 Actualizar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Real Trading Warning Modal -->
+    <div id="realTradingModal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden">
+        <div class="bg-gray-800 rounded-2xl p-6 max-w-md w-full mx-4 border border-red-500">
+            <div class="text-center">
+                <div class="text-4xl mb-4">🚨</div>
+                <h3 class="text-xl font-bold text-red-400 mb-2">TRADING REAL</h3>
+                <p class="text-gray-300 mb-4">
+                    Estás a punto de activar el modo <strong>TRADING REAL</strong> con fondos reales.
+                </p>
+                
+                <div class="bg-red-900 bg-opacity-50 p-4 rounded-lg mb-4 text-left">
+                    <p class="text-red-200 text-sm font-medium mb-2">⚠️ CONFIRMA QUE COMPRENDES LOS RIESGOS:</p>
+                    <ul class="text-red-200 text-sm space-y-1 list-disc list-inside">
+                        <li>Se usarán fondos REALES de tu cuenta</li>
+                        <li>Puedes sufrir pérdidas financieras reales</li>
+                        <li>El bot ejecutará órdenes REALES en el mercado</li>
+                        <li>Eres responsable de tus decisiones de trading</li>
+                    </ul>
+                </div>
+                
+                <div class="flex space-x-3">
+                    <button onclick="confirmRealTrading()" 
+                            class="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg font-medium transition-colors">
+                        ✅ CONFIRMAR
+                    </button>
+                    <button onclick="cancelRealTrading()" 
+                            class="flex-1 px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded-lg font-medium transition-colors">
+                        ❌ CANCELAR
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Metrics Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <!-- Balance Card -->
+        <div class="metric-card rounded-2xl p-6">
+            <div class="flex justify-between items-start">
+                <div>
+                    <p class="text-gray-400 text-sm font-medium">Balance Actual</p>
+                    <p id="currentBalance" class="text-3xl font-bold text-white mt-1">$10,000.00</p>
+                    <p id="initialBalance" class="text-gray-500 text-sm">Inicial: $10,000.00</p>
+                </div>
+                <div class="text-3xl opacity-20">💰</div>
+            </div>
+        </div>
+
+        <!-- P&L Card -->
+        <div class="metric-card rounded-2xl p-6">
+            <div class="flex justify-between items-start">
+                <div>
+                    <p class="text-gray-400 text-sm font-medium">P&L Total</p>
+                    <p id="totalPnL" class="text-3xl font-bold positive mt-1">$250.50</p>
+                    <p id="totalPnLPercent" class="text-sm positive">+2.50%</p>
+                </div>
+                <div class="text-3xl opacity-20">📈</div>
+            </div>
+        </div>
+
+        <!-- Trading Stats Card -->
+        <div class="metric-card rounded-2xl p-6">
+            <div class="flex justify-between items-start">
+                <div>
+                    <p class="text-gray-400 text-sm font-medium">Estadísticas</p>
+                    <p id="tradingStats" class="text-3xl font-bold text-white mt-1">9/15</p>
+                    <p id="totalTrades" class="text-gray-500 text-sm">15 trades total</p>
+                </div>
+                <div class="text-3xl opacity-20">📊</div>
+            </div>
+        </div>
+
+        <!-- Win Rate Card -->
+        <div class="metric-card rounded-2xl p-6">
+            <div class="flex justify-between items-start">
+                <div>
+                    <p class="text-gray-400 text-sm font-medium">Win Rate</p>
+                    <p id="winRate" class="text-3xl font-bold text-white mt-1">60%</p>
+                    <p id="winLossStats" class="text-gray-500 text-sm">9W / 6L</p>
+                </div>
+                <div class="text-3xl opacity-20">🎯</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Active Positions & Recent Trades -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Active Positions -->
+        <div class="metric-card rounded-2xl p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-semibold text-white">📌 Posiciones Activas</h3>
+                <span id="activePositionsCount" class="px-2 py-1 bg-blue-600 rounded-full text-sm">2</span>
+            </div>
+            <div id="activePositions" class="space-y-3">
+                <div class="bg-gray-700 rounded-lg p-4 border border-gray-600">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <span class="font-semibold text-white">BTC/USDT</span>
+                            <span class="text-green-400 text-sm ml-2">LONG</span>
+                        </div>
+                        <span class="text-green-400 font-semibold">+1.2%</span>
+                    </div>
+                    <div class="text-sm text-gray-400 mt-2">
+                        <div>Entrada: $34,500.00</div>
+                        <div>Actual: $34,914.00</div>
+                    </div>
+                </div>
+                <div class="bg-gray-700 rounded-lg p-4 border border-gray-600">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <span class="font-semibold text-white">ETH/USDT</span>
+                            <span class="text-red-400 text-sm ml-2">SHORT</span>
+                        </div>
+                        <span class="text-red-400 font-semibold">-0.8%</span>
+                    </div>
+                    <div class="text-sm text-gray-400 mt-2">
+                        <div>Entrada: $1,850.00</div>
+                        <div>Actual: $1,835.20</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Trades -->
+        <div class="metric-card rounded-2xl p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-semibold text-white">📋 Operaciones Recientes</h3>
+                <span id="recentTradesCount" class="px-2 py-1 bg-green-600 rounded-full text-sm">5</span>
+            </div>
+            <div id="recentTrades" class="space-y-2 max-h-96 overflow-y-auto">
+                <div class="bg-gray-700 rounded p-3 border border-gray-600">
+                    <div class="flex justify-between">
+                        <span class="font-medium text-white">BTC/USDT</span>
+                        <span class="text-green-400">+2.1%</span>
+                    </div>
+                    <div class="text-xs text-gray-400">Hace 5 min - LONG</div>
+                </div>
+                <div class="bg-gray-700 rounded p-3 border border-gray-600">
+                    <div class="flex justify-between">
+                        <span class="font-medium text-white">ETH/USDT</span>
+                        <span class="text-red-400">-0.5%</span>
+                    </div>
+                    <div class="text-xs text-gray-400">Hace 12 min - SHORT</div>
+                </div>
+                <div class="bg-gray-700 rounded p-3 border border-gray-600">
+                    <div class="flex justify-between">
+                        <span class="font-medium text-white">ADA/USDT</span>
+                        <span class="text-green-400">+1.8%</span>
+                    </div>
+                    <div class="text-xs text-gray-400">Hace 25 min - LONG</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- System Logs -->
+    <div class="metric-card rounded-2xl p-6 mt-6">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-lg font-semibold text-white">📝 Logs del Sistema</h3>
+            <div class="flex space-x-2">
+                <button onclick="clearLogs()" class="px-3 py-1 bg-gray-600 hover:bg-gray-700 rounded text-sm">
+                    🗑️ Limpiar
+                </button>
+                <button onclick="toggleAutoScroll()" class="px-3 py-1 bg-gray-600 hover:bg-gray-700 rounded text-sm">
+                    📜 Auto-scroll: <span id="autoScrollStatus">ON</span>
+                </button>
+            </div>
+        </div>
+        <div id="logsContainer" class="bg-gray-900 rounded-lg p-4 h-64 overflow-y-auto font-mono text-sm">
+            <div class="text-green-400">[14:52:30] ✅ Sistema inicializado correctamente</div>
+            <div class="text-blue-400">[14:52:31] 🔄 Cargando configuración del usuario</div>
+            <div class="text-green-400">[14:52:32] ✅ Sesión de usuario cargada: admin</div>
+            <div class="text-gray-300">[14:52:33] 📊 Dashboard listo - Modo simulación</div>
+        </div>
+    </div>
+
+    <!-- Last Update -->
+    <div class="text-center text-gray-500 text-sm mt-6">
+        <p id="lastUpdate">Última actualización: Cargando...</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Global variables
+let balanceChart = null;
+let pnlChart = null;
+let currentSessionId = null;
+let autoScrollLogs = true;
+
+// Initialize dashboard
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('✅ Dashboard inicializado');
+    
+    // Ocultar spinner de carga
+    const spinner = document.getElementById('loadingSpinner');
+    if (spinner) {
+        spinner.style.display = 'none';
+    }
+    
+    // Cargar datos iniciales
+    loadDashboardData();
+    
+    // Configurar actualización automática cada 10 segundos
+    setInterval(loadDashboardData, 10000);
+    
+    // Mostrar logs iniciales
+    addLog('SYSTEM', 'Dashboard inicializado correctamente', 'success');
+});
+
+// Cargar datos del dashboard
+async function loadDashboardData() {
+    try {
+        console.log('🔄 Actualizando datos del dashboard...');
+        
+        // Simular datos por ahora - luego reemplazar con API real
+        updateDashboardUI({
+            balance: 10250.50,
+            pnl: 250.50,
+            pnl_percent: 2.5,
+            total_trades: 15,
+            winning_trades: 9,
+            active_positions: 2,
+            status: 'stopped'
+        });
+        
+        document.getElementById('lastUpdate').textContent = 
+            'Última actualización: ' + new Date().toLocaleTimeString();
+            
+    } catch (error) {
+        console.error('❌ Error cargando datos:', error);
+        addLog('ERROR', 'Error cargando datos: ' + error.message, 'error');
+    }
+}
+
+// Actualizar la interfaz con datos
+function updateDashboardUI(data) {
+    // Actualizar métricas principales
+    document.getElementById('currentBalance').textContent = formatCurrency(data.balance);
+    document.getElementById('totalPnL').textContent = formatCurrency(data.pnl);
+    document.getElementById('totalPnLPercent').textContent = formatPercent(data.pnl_percent);
+    document.getElementById('tradingStats').textContent = `${data.winning_trades}/${data.total_trades}`;
+    document.getElementById('totalTrades').textContent = `${data.total_trades} trades total`;
+    document.getElementById('winRate').textContent = calculateWinRate(data.winning_trades, data.total_trades) + '%';
+    document.getElementById('winLossStats').textContent = `${data.winning_trades}W / ${data.total_trades - data.winning_trades}L`;
+    
+    // Colores para P&L
+    const pnlElement = document.getElementById('totalPnL');
+    const pnlPercentElement = document.getElementById('totalPnLPercent');
+    
+    if (data.pnl >= 0) {
+        pnlElement.className = 'text-3xl font-bold positive mt-1';
+        pnlPercentElement.className = 'text-sm positive';
+    } else {
+        pnlElement.className = 'text-3xl font-bold negative mt-1';
+        pnlPercentElement.className = 'text-sm negative';
+    }
+}
+
+// Funciones de utilidad
+function formatCurrency(amount) {
+    return '$' + amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatPercent(value) {
+    return (value >= 0 ? '+' : '') + value.toFixed(2) + '%';
+}
+
+function calculateWinRate(wins, total) {
+    return total > 0 ? ((wins / total) * 100).toFixed(0) : 0;
+}
+
+// Bot control functions
+async function startBot(mode) {
+    try {
+        showNotification(`🚀 Iniciando bot en modo ${mode.toUpperCase()}...`, 'info');
+        
+        // Simular llamada a API
+        setTimeout(() => {
+            showNotification(`✅ Bot iniciado en modo ${mode.toUpperCase()}`, 'success');
+            updateBotStatus(true, 'running', mode.toUpperCase());
+        }, 1000);
+        
+    } catch (error) {
+        showNotification('❌ Error iniciando el bot', 'error');
+    }
+}
+
+async function stopBot() {
+    try {
+        showNotification('🛑 Deteniendo bot...', 'warning');
+        
+        // Simular llamada a API
+        setTimeout(() => {
+            showNotification('✅ Bot detenido', 'success');
+            updateBotStatus(false, 'stopped');
+        }, 1000);
+        
+    } catch (error) {
+        showNotification('❌ Error deteniendo el bot', 'error');
+    }
+}
+
+function showRealTradingWarning() {
+    document.getElementById('realTradingModal').classList.remove('hidden');
+}
+
+function confirmRealTrading() {
+    document.getElementById('realTradingModal').classList.add('hidden');
+    startBot('real');
+}
+
+function cancelRealTrading() {
+    document.getElementById('realTradingModal').classList.add('hidden');
+    showNotification('❌ Trading real cancelado', 'warning');
+}
+
+function updateBotStatus(isRunning, status, mode = 'SIMULACIÓN') {
+    const startDemoBtn = document.getElementById('startDemoBtn');
+    const startSimulationBtn = document.getElementById('startSimulationBtn');
+    const startRealBtn = document.getElementById('startRealBtn');
+    const stopBotBtn = document.getElementById('stopBotBtn');
+    const statusBadge = document.getElementById('botStatusBadge');
+    const modeBadge = document.getElementById('tradingModeBadge');
+
+    if (isRunning) {
+        startDemoBtn.disabled = true;
+        startSimulationBtn.disabled = true;
+        startRealBtn.disabled = true;
+        stopBotBtn.disabled = false;
+        statusBadge.className = 'px-3 py-1 rounded-full text-sm font-medium status-running';
+        statusBadge.textContent = '▶️ OPERANDO';
+    } else {
+        startDemoBtn.disabled = false;
+        startSimulationBtn.disabled = false;
+        startRealBtn.disabled = false;
+        stopBotBtn.disabled = true;
+        statusBadge.className = 'px-3 py-1 rounded-full text-sm font-medium status-stopped';
+        statusBadge.textContent = '⏸️ DETENIDO';
+    }
+
+    // Update trading mode badge
+    modeBadge.textContent = mode === 'REAL' ? '🚨 REAL' : 
+                           mode === 'DEMO' ? '🎮 DEMO' : '🔶 SIMULACIÓN';
+    modeBadge.className = `px-3 py-1 rounded-full text-sm font-medium ${
+        mode === 'REAL' ? 'bg-red-600' :
+        mode === 'DEMO' ? 'bg-purple-600' : 'bg-yellow-600'
+    }`;
+}
+
+// Logs management
+function addLog(source, message, level = 'info') {
+    const logsContainer = document.getElementById('logsContainer');
+    const timestamp = new Date().toLocaleTimeString();
+    
+    const logEntry = document.createElement('div');
+    logEntry.className = `mb-1 ${level === 'error' ? 'text-red-400' : level === 'warning' ? 'text-yellow-400' : level === 'success' ? 'text-green-400' : 'text-gray-300'}`;
+    logEntry.innerHTML = `
+        <span class="text-gray-500">[${timestamp}]</span>
+        <span class="font-medium">${source}</span>
+        <span>${message}</span>
+    `;
+    
+    logsContainer.appendChild(logEntry);
+    
+    if (autoScrollLogs) {
+        logsContainer.scrollTop = logsContainer.scrollHeight;
+    }
+}
+
+function clearLogs() {
+    document.getElementById('logsContainer').innerHTML = '';
+    addLog('SYSTEM', 'Logs limpiados', 'info');
+}
+
+function toggleAutoScroll() {
+    autoScrollLogs = !autoScrollLogs;
+    document.getElementById('autoScrollStatus').textContent = autoScrollLogs ? 'ON' : 'OFF';
+    showNotification(`Auto-scroll ${autoScrollLogs ? 'activado' : 'desactivado'}`, 'info');
+}
+
+// Función de notificación
+function showNotification(message, type = 'info') {
+    let notifications = document.getElementById('notifications');
+    if (!notifications) {
+        notifications = document.createElement('div');
+        notifications.id = 'notifications';
+        notifications.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10000;
+            max-width: 400px;
+        `;
+        document.body.appendChild(notifications);
+    }
+    
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+        padding: 12px 16px;
+        margin-bottom: 10px;
+        border-radius: 8px;
+        color: white;
+        font-weight: 500;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    `;
+    
+    const colors = {
+        success: '#10b981',
+        error: '#ef4444', 
+        info: '#3b82f6',
+        warning: '#f59e0b'
+    };
+    
+    notification.style.background = colors[type] || colors.info;
+    notification.textContent = message;
+    
+    notifications.appendChild(notification);
+    
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.remove();
+        }
+    }, 5000);
+}
+
+// WebSocket simulation (por ahora)
+function setupWebSocket() {
+    console.log('🌐 Configurando WebSocket (simulación)');
+    // Aquí iría la configuración real de WebSocket
+}
+
+// Inicializar WebSocket cuando esté disponible
+if (typeof io !== 'undefined') {
+    setupWebSocket();
+}
+</script>
+{% endblock %}
