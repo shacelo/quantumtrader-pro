@@ -3,6 +3,10 @@
 {% block title %}Dashboard - QuantumTrader Pro{% endblock %}
 
 {% block extra_head %}
+<!-- Socket.IO Client (required by WebSocket Manager) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+<!-- WebSocket Manager -->
+<script src="{{ url_for('static', filename='js/websocket.js') }}"></script>
 <style>
     .metric-card {
         background: linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(30, 41, 59, 0.6));
@@ -36,6 +40,28 @@
     .status-connecting {
         background: linear-gradient(135deg, #f59e0b, #d97706);
     }
+
+    .price-up {
+        animation: priceUp 1s ease;
+        color: #10b981;
+    }
+
+    .price-down {
+        animation: priceDown 1s ease;
+        color: #ef4444;
+    }
+
+    @keyframes priceUp {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.1); }
+        100% { transform: scale(1); }
+    }
+
+    @keyframes priceDown {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.1); }
+        100% { transform: scale(1); }
+    }
 </style>
 {% endblock %}
 
@@ -47,6 +73,21 @@
             <div>
                 <h1 class="text-3xl font-bold text-white">📊 Dashboard</h1>
                 <p class="text-gray-400 mt-1">Monitor en tiempo real del sistema de trading</p>
+            </div>
+            <!-- Real-time Price Tickers -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                {% for symbol in ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT'] %}
+                <div class="metric-card p-4 rounded-lg">
+                    <h3 class="text-lg font-semibold text-gray-200">{{ symbol }}</h3>
+                    <div class="mt-2">
+                        <span id="price-{{ symbol }}" class="text-2xl font-bold text-white">0.00</span>
+                        <span class="text-sm text-gray-400">USDT</span>
+                    </div>
+                    <div class="text-xs text-gray-500 mt-1">
+                        Última actualización: <span id="last-price-{{ symbol }}">--:--:--</span>
+                    </div>
+                </div>
+                {% endfor %}
             </div>
             <div class="flex items-center space-x-4" id="connectionStatus">
                 <span class="text-green-400 font-medium">🔗 Conectado</span>
@@ -519,15 +560,14 @@ function showNotification(message, type = 'info') {
     }, 5000);
 }
 
-// WebSocket simulation (por ahora)
-function setupWebSocket() {
-    console.log('🌐 Configurando WebSocket (simulación)');
-    // Aquí iría la configuración real de WebSocket
-}
-
-// Inicializar WebSocket cuando esté disponible
-if (typeof io !== 'undefined') {
-    setupWebSocket();
-}
+// Inicializar WebSocket cuando el DOM esté listo
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🌐 Configurando WebSocket...');
+    if (typeof WebSocketManager !== 'undefined') {
+        window.wsManager = new WebSocketManager();
+    } else {
+        console.error('❌ WebSocketManager no está definido');
+    }
+});
 </script>
 {% endblock %}

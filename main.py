@@ -1,12 +1,16 @@
 # main.py - VERSIÓN CORREGIDA
+import eventlet
+eventlet.monkey_patch(os=True, select=True, socket=True, thread=True, time=True)
+
+# Importaciones después del monkey patch
 import os
 import sys
 import socket
+import logging
+from datetime import datetime
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 from flask_socketio import SocketIO
 from flask_cors import CORS
-import logging
-from datetime import datetime
 
 # Configuración de logging
 logging.basicConfig(level=logging.INFO)
@@ -29,10 +33,15 @@ app = Flask(__name__,
 
 app.secret_key = os.getenv('SECRET_KEY', 'fallback-secret-key-for-dev-12345')
 
-# Configurar SocketIO SIN eventlet
-socketio = SocketIO(app, 
+# Configurar SocketIO con eventlet
+socketio = SocketIO(app,
                    cors_allowed_origins="*",
-                   async_mode='threading')  # Usar threading en lugar de eventlet
+                   async_mode='eventlet',
+                   ping_timeout=10,
+                   ping_interval=5,
+                   always_connect=True,
+                   logger=True,
+                   engineio_logger=True)
 
 CORS(app)
 
@@ -191,93 +200,146 @@ def stop_bot():
 @app.route('/dashboard/data')
 def dashboard_data():
     """Endpoint que espera dashboard.js"""
-    return jsonify({
-        "success": True,
-        "balance": {
-            "current_balance": 10250.50,
-            "total_pnl": 250.50,
-            "total_pnl_percent": 2.5,
-            "history": [
-                {"time": "09:00", "balance": 10000, "pnl": 0},
-                {"time": "10:00", "balance": 10050, "pnl": 50},
-                {"time": "11:00", "balance": 10100, "pnl": 100},
-                {"time": "12:00", "balance": 10180, "pnl": 180},
-                {"time": "13:00", "balance": 10250.50, "pnl": 250.50}
-            ]
-        },
-        "trading": {
-            "total_trades": 15,
-            "real_trades": 5,
-            "simulated_trades": 10,
-            "winning_trades": 9,
-            "losing_trades": 6,
-            "win_rate": 60.0,
-            "recent_trades": [
-                {
-                    "symbol": "BTCUSDT",
-                    "entry_price": 34500.50,
-                    "exit_price": 34620.75,
-                    "pnl": 120.25,
-                    "status": "WIN",
-                    "real_trade": True,
-                    "exit_time": datetime.now().isoformat(),
-                    "close_reason": "TP_HIT"
-                },
-                {
-                    "symbol": "ETHUSDT",
-                    "entry_price": 1850.25,
-                    "exit_price": 1840.50,
-                    "pnl": -9.75,
-                    "status": "LOSS",
-                    "real_trade": False,
-                    "exit_time": datetime.now().isoformat(),
-                    "close_reason": "SL_HIT"
-                }
-            ]
-        },
-        "positions": {
-            "active_positions": 2,
-            "positions": [
-                {
-                    "symbol": "BTCUSDT",
-                    "entry_price": 34520.25,
-                    "current_price": 34650.80,
-                    "quantity": 0.002,
-                    "unrealized_pnl": 26.11,
-                    "unrealized_pnl_percent": 0.38,
-                    "stop_loss": 34300.00,
-                    "take_profit": 34800.00,
-                    "real_trade": True
-                },
-                {
-                    "symbol": "ETHUSDT",
-                    "entry_price": 1845.50,
-                    "current_price": 1852.25,
-                    "quantity": 0.05,
-                    "unrealized_pnl": 0.34,
-                    "unrealized_pnl_percent": 0.04,
-                    "stop_loss": 1830.00,
-                    "take_profit": 1870.00,
-                    "real_trade": False
-                }
-            ]
-        },
-        "session": {
-            "status": "stopped",
-            "trading_mode": "simulation"
-        },
-        "timestamp": datetime.now().isoformat()
-    })
+    # Obtener usuario logueado
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({"success": False, "message": "No autenticado"}), 401
+
+    from app.models.bot_sessions import BotSession
+    from app.models.trades import Trade
+    from app.models.positions import Position
+    from app.models.balance_history import BalanceHistory
+    from app.models.users import User
+    from app.models.orders import Order
+    from app.models.base import session_scope
+
+    with session_scope() as db:
+        # Buscar la última sesión activa del usuario
+        bot_session = db.query(BotSession).filter(BotSession.user_id == user_id).order_by(BotSession.start_time.desc()).first()
+        if not bot_session:
+            return jsonify({"success": True, "message": "No hay sesión de bot activa", "balance": {}, "trading": {}, "positions": {}, "session": {}})
+
+        # Balance
+        balance_history = db.query(BalanceHistory).filter(BalanceHistory.session_id == bot_session.id).order_by(BalanceHistory.timestamp.asc()).all()
+        balance_list = [bh.to_dict() for bh in balance_history]
+        current_balance = float(bot_session.final_balance) if bot_session.final_balance else float(bot_session.initial_balance)
+        total_pnl = current_balance - float(bot_session.initial_balance)
+        total_pnl_percent = (total_pnl / float(bot_session.initial_balance)) * 100 if bot_session.initial_balance else 0.0
+
+        # Trades
+        trades = db.query(Trade).filter(Trade.session_id == bot_session.id).order_by(Trade.entry_time.desc()).limit(10).all()
+        recent_trades = []
+        winning_trades = 0
+        losing_trades = 0
+        real_trades = 0
+        simulated_trades = 0
+        for t in trades:
+            if t.pnl and t.pnl > 0:
+                winning_trades += 1
+            elif t.pnl and t.pnl < 0:
+                losing_trades += 1
+            if t.real_trade:
+                real_trades += 1
+            else:
+                simulated_trades += 1
+            recent_trades.append({
+                "symbol": t.symbol,
+                "entry_price": float(t.entry_price),
+                "exit_price": float(t.exit_price) if t.exit_price else None,
+                "pnl": float(t.pnl) if t.pnl else 0.0,
+                "status": "WIN" if t.pnl and t.pnl > 0 else "LOSS",
+                "real_trade": t.real_trade,
+                "exit_time": t.exit_time.isoformat() if t.exit_time else None,
+                "close_reason": t.close_reason
+            })
+        total_trades = len(trades)
+        win_rate = (winning_trades / total_trades) * 100 if total_trades > 0 else 0.0
+
+        # Posiciones
+        positions = db.query(Position).filter(Position.session_id == bot_session.id).all()
+        active_positions = len(positions)
+        positions_list = []
+        for p in positions:
+            positions_list.append({
+                "symbol": p.symbol,
+                "entry_price": float(p.entry_price),
+                "current_price": float(p.current_price),
+                "quantity": float(p.quantity),
+                "unrealized_pnl": float(p.unrealized_pnl),
+                "unrealized_pnl_percent": float(p.unrealized_pnl_percent),
+                "stop_loss": float(p.stop_loss),
+                "take_profit": float(p.take_profit),
+                "real_trade": db.query(Trade).filter(Trade.id == p.trade_id).first().real_trade if p.trade_id else False
+            })
+
+        # Sesión
+        session_info = {
+            "status": bot_session.status,
+            "trading_mode": bot_session.trading_mode
+        }
+
+        return jsonify({
+            "success": True,
+            "balance": {
+                "current_balance": current_balance,
+                "total_pnl": total_pnl,
+                "total_pnl_percent": total_pnl_percent,
+                "history": balance_list
+            },
+            "trading": {
+                "total_trades": total_trades,
+                "real_trades": real_trades,
+                "simulated_trades": simulated_trades,
+                "winning_trades": winning_trades,
+                "losing_trades": losing_trades,
+                "win_rate": win_rate,
+                "recent_trades": recent_trades
+            },
+            "positions": {
+                "active_positions": active_positions,
+                "positions": positions_list
+            },
+            "session": session_info,
+            "timestamp": datetime.now().isoformat()
+        })
 
 # WebSocket events (simplificados)
 @socketio.on('connect')
 def handle_connect():
+    """Manejador de conexión de clientes WebSocket"""
     logger.info('✅ Cliente conectado via WebSocket')
-    return {'status': 'connected'}
+    socketio.emit('connection_status', {'status': 'connected'})
+    return True
 
 @socketio.on('disconnect')
-def handle_disconnect():
-    logger.info('🔌 Cliente desconectado')
+def handle_disconnect(reason):
+    """Manejador de desconexión de clientes WebSocket"""
+    logger.info(f'🔌 Cliente desconectado: {reason}')
+
+@socketio.event
+def market_data_request(data):
+    """Manejador de solicitudes de datos de mercado"""
+    try:
+        symbol = data.get('symbol', 'BTCUSDT')
+        # Aquí implementaremos la lógica para enviar datos de mercado
+        socketio.emit('market_data', {
+            'symbol': symbol,
+            'status': 'requesting_data'
+        })
+    except Exception as e:
+        logger.error(f'❌ Error procesando solicitud de datos: {str(e)}')
+
+@socketio.on_error()
+def error_handler(e):
+    """Manejador general de errores de WebSocket"""
+    logger.error(f'❌ Error en WebSocket: {str(e)}')
+    return False
+
+@socketio.on_error_default
+def default_error_handler(e):
+    """Manejador por defecto de errores de WebSocket"""
+    logger.error(f'❌ Error por defecto en WebSocket: {str(e)}')
+    return False
 
 def find_available_port(start_port=5000, max_port=5010):
     """Encuentra un puerto disponible"""
@@ -307,24 +369,11 @@ if __name__ == '__main__':
     print(f"   Usuario: admin")
     print(f"   Contraseña: admin123")
     
-    # Ejecutar SIN eventlet
-    socketio.run(app, 
+    # Ejecutar con eventlet
+    socketio.run(app,
                 host='0.0.0.0', 
-                port=PORT, 
-                debug=True, 
-                allow_unsafe_werkzeug=True)
-    
-    # Al final de main.py agregar:
-def main():
-    """Función principal para run.py"""
-    # El código de inicialización que ya tienes
-    app = create_app()
-    
-    with app.app_context():
-        db.create_all()
-    
-    return app
-
-if __name__ == '__main__':
-    app = main()
-    app.run(host='127.0.0.1', port=5000, debug=True)
+                port=PORT,
+                debug=True)
+    # Ejecuta la app con SocketIO y todos los endpoints registrados
+    # Para iniciar, usa:
+    #   python quantumtrader-pro/main.py

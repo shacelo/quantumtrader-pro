@@ -91,12 +91,26 @@ def register_blueprints(app):
         # Blueprints que SÍ existen
         from app.api.v1.auth import auth_bp
         from app.api.v1.bot_control import bot_bp
+        from app.api.v1.dashboard import dashboard_bp
+        from flask import render_template
+        
+        # Rutas principales
+        @app.route('/')
+        def index():
+            return render_template('index.html')
+            
+        @app.route('/dashboard')
+        def dashboard():
+            return render_template('dashboard.html')
         
         app.register_blueprint(auth_bp, url_prefix='/api/auth')
         print("✅ Blueprint auth registrado: /api/auth")
         
         app.register_blueprint(bot_bp, url_prefix='/api/bot')
         print("✅ Blueprint bot registrado: /api/bot")
+        
+        app.register_blueprint(dashboard_bp, url_prefix='/api/dashboard')
+        print("✅ Blueprint dashboard registrado: /api/dashboard")
         
         # Verificar rutas registradas
         print("Rutas registradas:")

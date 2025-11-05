@@ -3,6 +3,7 @@ from flask import Blueprint, request, jsonify
 from flask_login import login_required, current_user
 
 from app.services.data_service import DataService
+from app.services.bot_service import BotService
 
 dashboard_bp = Blueprint('dashboard', __name__)
 
@@ -10,8 +11,13 @@ dashboard_bp = Blueprint('dashboard', __name__)
 @login_required
 def get_dashboard_data():
     """
-    Obtiene todos los datos del dashboard
+    Obtiene todos los datos del dashboard y asegura que el bot esté funcionando
     """
+    # Intentar iniciar el bot si no está corriendo
+    bot_service = BotService.get_bot(current_user.id)
+    if not bot_service or not bot_service.is_running:
+        BotService.start_bot(current_user.id, 'simulation', None)
+    
     session_id = request.args.get('session_id', type=int)
     
     data = DataService.get_dashboard_data(current_user.id, session_id)

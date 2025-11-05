@@ -1,5 +1,16 @@
 
-redis==4.5.4
-rq==1.15.1
+Flask==2.2.5
+flask-socketio==5.3.3
+eventlet==0.33.3
+Flask-SQLAlchemy==3.0.3
+SQLAlchemy==1.4.49
+python-dotenv==1.0.0
+PyYAML==6.0
+bcrypt==4.0.1
+Flask-Login==0.6.2
+Flask-Cors==3.0.10
 Flask-Session==0.4.0
-huey==2.4.5
+requests==2.31.0
+psycopg2-binary==2.9.6
+python-binance==1.0.19
+websocket-client==1.6.4

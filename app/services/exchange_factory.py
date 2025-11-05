@@ -15,7 +15,7 @@ class ExchangeFactory:
         if not api_key:
             api_key = os.getenv('BINANCE_API_KEY', '')
         if not secret_key:
-            secret_key = os.getenv('BINANCE_SECRET_KEY', '')
+            secret_key = os.getenv('BINANCE_API_SECRET', '')  # Nombre correcto de la variable
         
         if not api_key or not secret_key:
             raise ValueError("Se requieren API Key y Secret Key para Binance")
